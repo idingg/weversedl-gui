@@ -1,0 +1,6 @@
+playwright
+requests
+aiohttp
+asyncio
+PyQt6
+cx_Freeze
