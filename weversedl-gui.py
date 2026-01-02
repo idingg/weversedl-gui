@@ -19,7 +19,7 @@ def findResourceFile(filename: str) -> str:
         loadingPath = filename
     if os.path.isfile(loadingPath) == False:
         if hasattr(sys, "_MEIPASS"):
-            loadingPath = sys._MEIPASS + os.sep + filename
+            loadingPath = getattr(sys, "_MEIPASS") + os.sep + filename
     return loadingPath
 
 
@@ -256,7 +256,7 @@ class Window(PyQt6.QtWidgets.QMainWindow):
 
                 self.complete.emit(weverseNetwork)
                 endtime = time.time()
-                print("download time :", endtime - starttime)
+                print(f"download time : {endtime - starttime}")
                 print("page download completed")
             except Exception as e:
                 self.error.emit(e)
@@ -274,7 +274,7 @@ class Window(PyQt6.QtWidgets.QMainWindow):
         def __init__(
             self,
             parent,
-            pixmap: PyQt6.QtGui.QPixmap,
+            pixmap: list[PyQt6.QtGui.QPixmap | str],
             interval: float = 1,
             runningTime: int = 400,
         ):
@@ -292,13 +292,17 @@ class Window(PyQt6.QtWidgets.QMainWindow):
             self.interval = interval
 
         def run(self):
-            pics = pic.getAllCroppedPic(self.pixmap)
+            # pics = pic.getAllCroppedPic(self.pixmap)
             shownSpriteCount = 0
             while self.__isrunning:
-                for item in pics:
+                for idx in range(len(self.pixmap)):
+
+                    # for item in self.pixmap:
 
                     shownSpriteCount += 1
-                    self.updatePixmap.emit(item)
+                    if isinstance(self.pixmap[idx], str):
+                        self.pixmap[idx] = pic.pixmapFromNetwork(self.pixmap[idx])
+                    self.updatePixmap.emit(self.pixmap[idx])
 
                     time.sleep(self.interval)
                     if shownSpriteCount >= self.__maxSpriteCount:
@@ -317,7 +321,7 @@ class Window(PyQt6.QtWidgets.QMainWindow):
     __widgetHeight = 30
     __runningDownloads = []
     __runningSprites = []
-    __weverseM3U8: weverse.M3U8 = None
+    __weverseMPD: weverse.MPD = None
     __resolution: str = None
     __downloadVideoThread: DownloadVideoThread = None
     __lastSaveDir: str = ""
@@ -333,7 +337,7 @@ class Window(PyQt6.QtWidgets.QMainWindow):
 
     def initUI(self):
         style = "border-style: solid; border-width: 1px; border-color: #999999; border-radius: 2px; "
-        stylewhitebg = "background-color: white; border-style: solid; border-width: 1px; border-color: #999999; border-radius: 2px; "
+        stylewhitebg = "border-style: solid; border-width: 1px; border-color: #999999; border-radius: 2px; "
         stylered = "color: #FF0000;"
 
         self.labelUrl = PyQt6.QtWidgets.QLabel("URL : ", self)
@@ -370,14 +374,14 @@ class Window(PyQt6.QtWidgets.QMainWindow):
 
         self.comboResolution = PyQt6.QtWidgets.QComboBox(self)
         self.comboResolution.setStyleSheet(
-            "QComboBox  { background-color :#FFFFFF; " + style + " }"
+            "QComboBox  { " + style + " }"
         )
         self.comboResolution.setHidden(True)
         self.comboResolution.currentTextChanged.connect(self.onComboResolutionChanged)
 
         self.btnDownload = PyQt6.QtWidgets.QPushButton("다운로드", self)
         self.btnDownload.setStyleSheet(
-            "QPushButton { background-color :#FFFFFF; "
+            "QPushButton { "
             + style
             + " } QPushButton:hover { background-color : #65e0d6; }"
         )
@@ -385,7 +389,7 @@ class Window(PyQt6.QtWidgets.QMainWindow):
 
         self.btnStop = PyQt6.QtWidgets.QPushButton("X", self)
         self.btnStop.setStyleSheet(
-            "QPushButton { background-color :#FFFFFF; "
+            "QPushButton { "
             + style
             + " } QPushButton:hover { background-color : #65e0d6; }"
         )
@@ -549,7 +553,10 @@ class Window(PyQt6.QtWidgets.QMainWindow):
     def setPic(self, pixmap: PyQt6.QtGui.QPixmap):
         if pixmap.isNull() == False:
             keepAspectRatio = PyQt6.QtCore.Qt.AspectRatioMode.KeepAspectRatio
-            pixmap = pixmap.scaled(self.labelPreview.size(), keepAspectRatio)
+            smoothTransform = PyQt6.QtCore.Qt.TransformationMode.SmoothTransformation
+            pixmap = pixmap.scaled(
+                self.labelPreview.size(), keepAspectRatio, smoothTransform
+            )
         self.labelPreview.setPixmap(pixmap)
         self.repaint()
 
@@ -559,19 +566,25 @@ class Window(PyQt6.QtWidgets.QMainWindow):
         self.labelPreview.setMovie(self.movie)
         self.movie.start()
 
-    def startSpriteTicker(self, spriteImg: PyQt6.QtGui.QPixmap, runningTime: int):
-        self.stopThreads(self.__runningSprites)
-        self.spriteThread = self.SpriteThread(self, spriteImg, 0.5, runningTime)
-        self.spriteThread.updatePixmap.connect(self.setPic)
-        self.__runningSprites.append(self.spriteThread)
-        self.spriteThread.start(PyQt6.QtCore.QThread.Priority.TimeCriticalPriority)
+    # def startSpriteTicker(self, spriteImg: PyQt6.QtGui.QPixmap, runningTime: int):
+    #     self.stopThreads(self.__runningSprites)
+    #     self.spriteThread = self.SpriteThread(self, spriteImg, 0.5, runningTime)
+    #     self.spriteThread.updatePixmap.connect(self.setPic)
+    #     self.__runningSprites.append(self.spriteThread)
+    #     self.spriteThread.start(PyQt6.QtCore.QThread.Priority.TimeCriticalPriority)
 
-    def setSpriteImage(self, spriteUrlFirst: list, runningTime: int):
+    def setSpriteImage(self, spriteUrl: list, runningTime: int):
         self.stopThreads(self.__runningSprites)
-        if spriteUrlFirst != []:
-            spriteUrlFirst = spriteUrlFirst[0]
-            spriteImg = pic.pixmapFromNetwork(spriteUrlFirst)
-            self.startSpriteTicker(spriteImg, runningTime)
+
+        spriteImg = []
+        # for url in spriteUrl:
+        #     spriteImg.append(pic.pixmapFromNetwork(url))
+
+        if spriteUrl != []:
+            self.spriteThread = self.SpriteThread(self, spriteUrl, 0.5, runningTime)
+            self.spriteThread.updatePixmap.connect(self.setPic)
+            self.__runningSprites.append(self.spriteThread)
+            self.spriteThread.start(PyQt6.QtCore.QThread.Priority.TimeCriticalPriority)
 
     def setLoadingImage(self):
         loadingGifPath = findResourceFile("loading.gif")
@@ -582,7 +595,7 @@ class Window(PyQt6.QtWidgets.QMainWindow):
         self.labelPreview.setText("미리보기")
 
     def clearData(self):
-        self.__weverseM3U8 = None
+        self.__weverseMPD = None
         self.__resolution = None
 
     def clearForm(self):
@@ -620,27 +633,23 @@ class Window(PyQt6.QtWidgets.QMainWindow):
         self.btnDownload.setHidden(False)
 
     def onDownloadPageCompleted(self, weverseNetwork: weverse.Network):
-        if weverseNetwork.getM3U8MasterUrl() == None:
-            self.onDownloadPageError(Exception("Invalid M3U8 Master URL"))
-            return
-        weverseM3U8 = weverse.M3U8(weverseNetwork.getM3U8MasterUrl())
-        self.__weverseM3U8 = weverseM3U8
+        weverseNetwork.checkMpd()
+        self.__weverseMPD = weverse.MPD(weverseNetwork.getMPD())
+
         if weverseNetwork.isOnLive():
-            self.__thumbnailUrl = weverseNetwork.getThumbnailUrl()
-            self.setPic(pic.pixmapFromNetwork(self.__thumbnailUrl))
+            # self.__thumbnailUrl = weverseNetwork.getThumbnailUrl()
+            # self.setPic(pic.pixmapFromNetwork(self.__thumbnailUrl))
 
             self.labelOnLive.setHidden(False)
         else:
             self.setSpriteImage(
-                weverseNetwork.getSpriteUrl(), weverseM3U8.getRunningTime()
+                self.__weverseMPD.getSpriteUrl(), self.__weverseMPD.getRunningTime()
             )
 
             self.labelOnLive.setHidden(True)
         self.setTitleText(weverseNetwork.getPageTitle())
-        self.setRunningTimeText(self.formatTime(weverseM3U8.getRunningTime()))
-        self.setComboResolution(weverseM3U8.getAvailableResolutions())
-
-        print("duration:", weverseM3U8.getDuration())
+        self.setRunningTimeText(self.formatTime(self.__weverseMPD.getRunningTime()))
+        self.setComboResolution(self.__weverseMPD.getAvailableResolutions())
 
         self.adjustWidgetPosition()
 
@@ -762,7 +771,7 @@ class Window(PyQt6.QtWidgets.QMainWindow):
         self.btnStop.setEnabled(True)
 
     def onDownloadVideoComplete(self, isCompleted: bool):
-        print("video download completed")
+        print("\nvideo download completed")
 
         message = self.labelDownloadInfo.text()
         if isCompleted == False:
@@ -784,7 +793,7 @@ class Window(PyQt6.QtWidgets.QMainWindow):
             self.__downloadVideoThread.setKeepDownloadFlag(False)
 
     def onBtnDownloadClicked(self):
-        if self.__resolution == None or self.__weverseM3U8 == None:
+        if self.__resolution == None or self.__weverseMPD == None:
             print("No video")
             return
         print(self.__resolution)
@@ -797,10 +806,10 @@ class Window(PyQt6.QtWidgets.QMainWindow):
             return
 
         print("download thread initialize")
-        m3u8TsUrl = self.__weverseM3U8.getm3u8TsUrl(self.__resolution)
-        duration = self.__weverseM3U8.getDuration()
+        tsM3u8Url = self.__weverseMPD.getTsM3u8Url(self.__resolution)
+        duration = self.__weverseMPD.getDuration()
         downloadVideoThread = self.DownloadVideoThread(
-            self, savePath[0], m3u8TsUrl, duration
+            self, savePath[0], tsM3u8Url, duration
         )
         self.__downloadVideoThread = downloadVideoThread
         downloadVideoThread.info.connect(self.onDownloadVideoInfo)

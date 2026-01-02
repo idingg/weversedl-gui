@@ -3,7 +3,6 @@
 import PyQt6.QtGui
 import PyQt6.QtCore
 import PyQt6.QtNetwork
-import time
 
 from weverse import Network
 
